@@ -44,6 +44,10 @@ def rsa_encrypt(data: bytes, e: int, n: int) -> bytes:
     Encrypt arbitrary bytes using chunking.
     Returns a single bytes object.
     """
+
+    if n < 256:
+        raise ValueError(f"Invalid RSA modulus: n must be at least 256, got {n}. Use a larger n.")
+
     k = (n.bit_length() + 7) // 8      # modulus size in bytes
     chunk_size = k - 1                 # must be < n
 
@@ -65,6 +69,10 @@ def rsa_decrypt(cipher: bytes, d: int, n: int) -> bytes:
     """
     Decrypt chunked ciphertext back into original bytes.
     """
+
+    if n < 256:
+        raise ValueError(f"Invalid RSA modulus: n must be at least 256, got {n}. Use a larger n.")
+    
     k = (n.bit_length() + 7) // 8
 
     i = 0

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import ctypes
 
 import base64
 import importlib
@@ -58,10 +59,11 @@ class CryptoGUI:
         self.operation_var = tk.StringVar(value="Encrypt")
         self.input_mode_var = tk.StringVar(value="Text")
         self.file_path_var = tk.StringVar()
-        self.hex_mode_var = tk.BooleanVar(value=False)
+        self.binary_format_var = tk.StringVar(value="base64")
         self.status_var = tk.StringVar(value="Idle.")
         self.stats_var = tk.StringVar(value="Time: -- | Size: --")
         self.input_hint_var = tk.StringVar()
+        self.output_meta_var = tk.StringVar(value="Preview: Run an operation to inspect the result.")
 
         self.key_entries: dict[str, ttk.Entry] = {}
         self.current_result: bytes | str | None = None
@@ -225,7 +227,11 @@ class CryptoGUI:
         self.style.map(
             "Card.TRadiobutton",
             background=[("active", self.colors["panel"])],
-            foreground=[("active", self.colors["accent"]), ("selected", self.colors["accent"])],
+            foreground=[
+                ("disabled", self.colors["danger"]),
+                ("active", self.colors["accent"]),
+                ("selected", self.colors["accent"]),
+            ],
         )
         self.style.configure(
             "Card.TCheckbutton",
@@ -236,7 +242,11 @@ class CryptoGUI:
         self.style.map(
             "Card.TCheckbutton",
             background=[("active", self.colors["panel"])],
-            foreground=[("active", self.colors["accent"]), ("selected", self.colors["accent"])],
+            foreground=[
+                ("disabled", self.colors["muted"]),
+                ("active", self.colors["accent"]),
+                ("selected", self.colors["accent"]),
+            ],
         )
 
     def _create_card(
@@ -337,7 +347,7 @@ class CryptoGUI:
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             header,
-            text="Encrypt and decrypt text or files with a cleaner, faster-to-read control panel.",
+            text="Encrypt and decrypt text or files with different cryptographic algorithms.",
             style="HeroSubtitle.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
@@ -367,22 +377,24 @@ class CryptoGUI:
         )
         op_frame = ttk.Frame(settings_frame, style="Card.TFrame")
         op_frame.grid(row=0, column=3, sticky="w")
-        ttk.Radiobutton(
+        self.encrypt_radio = ttk.Radiobutton(
             op_frame,
             text="Encrypt",
             value="Encrypt",
             variable=self.operation_var,
             command=self.on_operation_change,
             style="Card.TRadiobutton",
-        ).grid(row=0, column=0, padx=(0, 10))
-        ttk.Radiobutton(
+        )
+        self.encrypt_radio.grid(row=0, column=0, padx=(0, 10))
+        self.decrypt_radio = ttk.Radiobutton(
             op_frame,
             text="Decrypt",
             value="Decrypt",
             variable=self.operation_var,
             command=self.on_operation_change,
             style="Card.TRadiobutton",
-        ).grid(row=0, column=1)
+        )
+        self.decrypt_radio.grid(row=0, column=1)
 
         input_frame = self._create_card(
             outer,
@@ -395,14 +407,15 @@ class CryptoGUI:
 
         mode_frame = ttk.Frame(input_frame, style="Card.TFrame")
         mode_frame.grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(
+        self.text_radio = ttk.Radiobutton(
             mode_frame,
             text="Text Input",
             value="Text",
             variable=self.input_mode_var,
             command=self.on_input_mode_change,
             style="Card.TRadiobutton",
-        ).grid(row=0, column=0, padx=(0, 10))
+        )
+        self.text_radio.grid(row=0, column=0, padx=(0, 10))
         self.file_radio = ttk.Radiobutton(
             mode_frame,
             text="File Upload",
@@ -432,14 +445,13 @@ class CryptoGUI:
         self.file_input_frame.grid(row=0, column=0, sticky="ew")
         self.file_input_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(
+        self.browse_button = ttk.Button(
             self.file_input_frame,
             text="Browse...",
             command=self.browse_file,
             style="Secondary.TButton",
-        ).grid(
-            row=0, column=0, padx=(0, 10)
         )
+        self.browse_button.grid(row=0, column=0, padx=(0, 10))
         ttk.Entry(
             self.file_input_frame,
             textvariable=self.file_path_var,
@@ -451,7 +463,7 @@ class CryptoGUI:
             outer,
             3,
             "3. Configure the key",
-            "Each algorithm exposes only the fields it needs for the current operation.",
+            "Enter the key(s) for the selected algorithm.",
         )
         self.key_frame.columnconfigure(0, weight=1)
 
@@ -462,25 +474,64 @@ class CryptoGUI:
         action_frame = ttk.Frame(outer, style="App.TFrame")
         action_frame.grid(row=4, column=0, sticky="ew", pady=(0, 10))
         action_frame.columnconfigure(0, weight=1)
-        action_frame.columnconfigure(1, weight=1)
+        format_frame = ttk.Frame(action_frame, style="Card.TFrame", padding=(12, 10))
+        format_frame.grid(row=0, column=0, sticky="w")
+        format_frame.columnconfigure(0, weight=1)
 
-        ttk.Button(action_frame, text="Run", command=self.on_run_clicked, style="Primary.TButton").grid(
-            row=0, column=0, sticky="e", padx=(0, 6)
+        ttk.Label(format_frame, text="Binary Text Format", style="Field.TLabel").grid(
+            row=0, column=0, sticky="w"
         )
-        ttk.Button(
-            action_frame,
+        ttk.Label(
+            format_frame,
+            text="Used for pasted ciphertext on decrypt and for binary output preview.",
+            style="CardDescription.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+
+        binary_format_toggle = ttk.Frame(format_frame, style="Card.TFrame")
+        binary_format_toggle.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.base64_radio = ttk.Radiobutton(
+            binary_format_toggle,
+            text="Base64",
+            value="base64",
+            variable=self.binary_format_var,
+            command=self.on_binary_format_change,
+            style="Card.TRadiobutton",
+        )
+        self.base64_radio.grid(row=0, column=0, padx=(0, 12))
+        self.hex_radio = ttk.Radiobutton(
+            binary_format_toggle,
+            text="Hex",
+            value="hex",
+            variable=self.binary_format_var,
+            command=self.on_binary_format_change,
+            style="Card.TRadiobutton",
+        )
+        self.hex_radio.grid(row=0, column=1)
+
+        action_buttons = ttk.Frame(action_frame, style="App.TFrame")
+        action_buttons.grid(row=0, column=1, sticky="e")
+
+        self.run_button = ttk.Button(
+            action_buttons,
+            text="Run",
+            command=self.on_run_clicked,
+            style="Primary.TButton",
+        )
+        self.run_button.grid(row=0, column=0, padx=(0, 6))
+
+        self.clear_button = ttk.Button(
+            action_buttons,
             text="Clear All",
             command=self.clear_all,
             style="Secondary.TButton",
-        ).grid(
-            row=0, column=1, sticky="w", padx=(6, 0)
         )
+        self.clear_button.grid(row=0, column=1)
 
         output_frame = self._create_card(
             outer,
             5,
             "4. Review the output",
-            "Copy, save, or switch between Base64 and hex when binary data is involved.",
+            "Copy or save the result. Binary previews follow the selected Base64 or hex format.",
             expand=True,
         )
         output_frame.grid_configure(sticky="nsew")
@@ -492,29 +543,24 @@ class CryptoGUI:
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         toolbar.columnconfigure(2, weight=1)
 
-        ttk.Button(
+        self.copy_button = ttk.Button(
             toolbar,
             text="Copy to Clipboard",
             command=self.copy_output,
             style="Secondary.TButton",
-        ).grid(
-            row=0, column=0, padx=(0, 8)
         )
-        ttk.Button(
+        self.copy_button.grid(row=0, column=0, padx=(0, 8))
+        self.save_button = ttk.Button(
             toolbar,
             text="Save to File...",
             command=self.save_output_to_file,
             style="Secondary.TButton",
-        ).grid(
-            row=0, column=1, padx=(0, 8)
         )
-        ttk.Checkbutton(
-            toolbar,
-            text="Display / parse hex",
-            variable=self.hex_mode_var,
-            command=self.on_binary_format_change,
-            style="Card.TCheckbutton",
-        ).grid(row=0, column=2, sticky="w")
+        self.save_button.grid(row=0, column=1, padx=(0, 8))
+
+        ttk.Label(toolbar, textvariable=self.output_meta_var, style="Muted.TLabel").grid(
+            row=0, column=2, sticky="w"
+        )
 
         ttk.Label(toolbar, textvariable=self.stats_var, style="Stats.TLabel").grid(
             row=0, column=3, sticky="e"
@@ -531,7 +577,7 @@ class CryptoGUI:
         output_surface.grid_columnconfigure(0, weight=1)
         output_surface.grid_rowconfigure(1, weight=1)
         output_surface.grid_propagate(False)
-        output_surface.configure(height=150)
+        output_surface.configure(height=230)
 
         tk.Label(
             output_surface,
@@ -592,6 +638,7 @@ class CryptoGUI:
             self._render_single_key("AES Key (16 bytes)", "key")
             self.enable_file_input()
         elif algorithm == "3DES":
+            self.enable_file_input()
             labels = ("Key 1 (8 bytes)", "Key 2 (8 bytes)", "Key 3 (8 bytes)")
             key_frame = ttk.Frame(self.key_container, style="Card.TFrame")
             key_frame.grid(row=0, column=0, sticky="ew")
@@ -641,7 +688,9 @@ class CryptoGUI:
         if text_mode:
             self.file_input_frame.grid_remove()
             self.text_input.grid()
+            self.text_input.configure(state=tk.NORMAL)
         else:
+            self.text_input.configure(state=tk.DISABLED)
             self.text_input.grid_remove()
             self.file_input_frame.grid()
         self.update_input_hint()
@@ -670,12 +719,15 @@ class CryptoGUI:
         if algorithm == "Vigenere":
             self.input_hint_var.set("Vigenere works on text only.")
         elif self.input_mode_var.get() == "File":
-            self.input_hint_var.set("File mode reads raw bytes from disk.")
+            self.input_hint_var.set(
+                "File mode reads raw bytes from disk. Binary format only affects the preview, not the saved bytes."
+            )
         elif operation == "Encrypt":
             self.input_hint_var.set("Text mode is encoded as UTF-8 before encryption.")
         else:
+            format_name = self.get_binary_format_name()
             self.input_hint_var.set(
-                "Paste ciphertext as Base64 or hex. The checkbox only changes how binary output is displayed."
+                f"Paste ciphertext as {format_name}. Change Binary Text Format if your ciphertext is in the other encoding."
             )
 
     def browse_file(self) -> None:
@@ -687,95 +739,115 @@ class CryptoGUI:
         self.set_status(f"Selected file: {path}", "gray")
 
     def on_run_clicked(self) -> None:
-        self.set_status("Processing...", "blue")
+        try:
+            request = self.build_request_from_ui()
+            self.validate_request(request)
+        except Exception as exc:
+            self.set_status(f"Error: {self.format_error_message(exc)}", "red")
+            return
 
         try:
-            self.validate_inputs()
-            data = self.get_input_data()
+            self.set_status("Processing...", "blue")
+            self.root.update_idletasks()
             started = perf_counter()
-            result = self.execute_backend(data)
+            data = self.get_input_data(request)
+            result = self.execute_backend(data, request)
             elapsed_ms = (perf_counter() - started) * 1000
-            self.store_result_state(result)
+            self.store_result_state(result, request)
             self.refresh_output_display()
             self.update_stats(elapsed_ms, result)
-
-            if self.current_display_kind == "binary" and self.operation_var.get() == "Decrypt":
-                self.set_status("Success: Decryption complete. Output is binary, so it is displayed as encoded text.", "orange")
-            else:
-                action = "Encryption" if self.operation_var.get() == "Encrypt" else "Decryption"
-                self.set_status(f"Success: {action} complete.", "green")
+            self.set_status(self.build_success_message(request), "green")
         except Exception as exc:
             self.set_status(f"Error: {self.format_error_message(exc)}", "red")
 
-    def validate_inputs(self) -> None:
-        input_mode = self.input_mode_var.get()
-        algorithm = self.algorithm_var.get()
+    def build_request_from_ui(self) -> dict[str, object]:
+        request: dict[str, object] = {
+            "algorithm": self.algorithm_var.get(),
+            "operation": self.operation_var.get(),
+            "encrypting": self.operation_var.get() == "Encrypt",
+            "input_mode": self.input_mode_var.get(),
+            "binary_format": self.binary_format_var.get(),
+            "text_input": self.text_input.get("1.0", "end-1c"),
+            "file_path": self.file_path_var.get().strip(),
+        }
+
+        algorithm = request["algorithm"]
+        if algorithm == "AES":
+            request["key"] = self.key_entries["key"].get()
+        elif algorithm == "3DES":
+            request["keys"] = [self.key_entries[f"key{index}"].get() for index in range(1, 4)]
+        elif algorithm == "Vigenere":
+            request["key"] = self.key_entries["key"].get()
+        elif algorithm == "RSA":
+            request["rsa_raw_values"] = {
+                field_name: self.key_entries[field_name].get().strip()
+                for field_name in ("e", "d", "n")
+            }
+
+        return request
+
+    def validate_request(self, request: dict[str, object]) -> None:
+        input_mode = str(request["input_mode"])
+        algorithm = str(request["algorithm"])
 
         if input_mode == "Text":
-            raw_text = self.text_input.get("1.0", "end-1c")
+            raw_text = str(request["text_input"])
             if not raw_text.strip():
                 raise ValueError("Input text cannot be empty")
         else:
-            path = self.file_path_var.get().strip()
+            path = str(request["file_path"])
             if not path:
                 raise ValueError("Please choose a file")
             if not Path(path).is_file():
                 raise FileNotFoundError("Selected file does not exist")
 
         if algorithm == "AES":
-            key = self.key_entries["key"].get()
+            key = str(request["key"])
             if len(key.encode("utf-8")) != 16:
                 raise ValueError("AES key must be exactly 16 bytes")
         elif algorithm == "3DES":
-            for index in range(1, 4):
-                key = self.key_entries[f"key{index}"].get()
-                if len(key.encode("utf-8")) != 8:
+            keys = request["keys"]
+            assert isinstance(keys, list)
+            for index, key in enumerate(keys, start=1):
+                if len(str(key).encode("utf-8")) != 8:
                     raise ValueError(f"3DES Key {index} must be exactly 8 bytes")
         elif algorithm == "Vigenere":
-            key = self.key_entries["key"].get()
+            key = str(request["key"])
             if not key:
                 raise ValueError("Vigenere key cannot be empty")
             if not key.isalpha():
                 raise ValueError("Vigenere key must contain only letters")
         elif algorithm == "RSA":
-            self.parse_rsa_fields()
+            raw_values = request["rsa_raw_values"]
+            assert isinstance(raw_values, dict)
+            request["rsa_values"] = self.parse_rsa_fields(raw_values, bool(request["encrypting"]))
 
-    def get_input_data(self) -> bytes | str:
-        algorithm = self.algorithm_var.get()
-        operation = self.operation_var.get()
-        input_mode = self.input_mode_var.get()
+    def get_input_data(self, request: dict[str, object]) -> bytes | str:
+        algorithm = str(request["algorithm"])
+        operation = str(request["operation"])
+        input_mode = str(request["input_mode"])
 
         if input_mode == "File":
-            with open(self.file_path_var.get(), "rb") as source_file:
+            with open(str(request["file_path"]), "rb") as source_file:
                 return source_file.read()
 
-        raw_text = self.text_input.get("1.0", "end-1c")
+        raw_text = str(request["text_input"])
         if algorithm == "Vigenere":
             return raw_text
 
         if operation == "Encrypt":
             return raw_text.encode("utf-8")
 
-        return self.parse_binary_text(raw_text)
+        return self.parse_binary_text(raw_text, str(request["binary_format"]))
 
-    def parse_binary_text(self, value: str) -> bytes:
+    def parse_binary_text(self, value: str, binary_format: str) -> bytes:
         cleaned = "".join(value.split())
         if not cleaned:
             raise ValueError("Ciphertext cannot be empty")
 
-        parsers = []
-        if self.hex_mode_var.get():
-            parsers = [("hex", self._parse_hex), ("Base64", self._parse_base64)]
-        else:
-            parsers = [("Base64", self._parse_base64), ("hex", self._parse_hex)]
-
-        for _name, parser in parsers:
-            try:
-                return parser(cleaned)
-            except ValueError:
-                continue
-
-        raise ValueError("Could not parse ciphertext as Base64 or hex")
+        if binary_format == "hex":
+            return self._parse_hex(cleaned)
+        return self._parse_base64(cleaned)
 
     def _parse_base64(self, value: str) -> bytes:
         try:
@@ -784,67 +856,76 @@ class CryptoGUI:
             raise ValueError("invalid Base64 input") from exc
 
     def _parse_hex(self, value: str) -> bytes:
+        if value.lower().startswith("0x"):
+            value = value[2:]
         try:
             return bytes.fromhex(value)
         except ValueError as exc:
             raise ValueError("invalid hex input") from exc
 
-    def execute_backend(self, data: bytes | str) -> bytes | str:
-        algorithm = self.algorithm_var.get()
-        encrypting = self.operation_var.get() == "Encrypt"
+    def execute_backend(self, data: bytes | str, request: dict[str, object]) -> bytes | str:
+        algorithm = str(request["algorithm"])
+        encrypting = bool(request["encrypting"])
 
         if algorithm == "AES":
-            key = self.key_entries["key"].get().encode("utf-8")
+            key = str(request["key"]).encode("utf-8")
             cipher = AES128(key)
             return cipher.encrypt(data) if encrypting else cipher.decrypt(data)
 
         if algorithm == "3DES":
-            key1 = self.key_entries["key1"].get().encode("utf-8")
-            key2 = self.key_entries["key2"].get().encode("utf-8")
-            key3 = self.key_entries["key3"].get().encode("utf-8")
+            keys = request["keys"]
+            assert isinstance(keys, list)
+            key1, key2, key3 = (str(key).encode("utf-8") for key in keys)
             if encrypting:
                 return encrypt_3des(data, key1, key2, key3)
             return decrypt_3des(data, key1, key2, key3)
 
         if algorithm == "RSA":
-            rsa_values = self.parse_rsa_fields()
+            rsa_values = request["rsa_values"]
+            assert isinstance(rsa_values, dict)
             if encrypting:
                 return rsa_encrypt(data, rsa_values["e"], rsa_values["n"])
             return rsa_decrypt(data, rsa_values["d"], rsa_values["n"])
 
-        key = self.key_entries["key"].get()
+        key = str(request["key"])
         if encrypting:
             return vigenere_encrypt(data, key)
         return vigenere_decrypt(data, key)
 
-    def store_result_state(self, result: bytes | str) -> None:
+    def store_result_state(self, result: bytes | str, request: dict[str, object]) -> None:
         self.current_result = result
 
         if isinstance(result, str):
             self.current_display_kind = "text"
-            self.current_save_kind = "text"
+            self.current_save_kind = "bytes" if request["input_mode"] == "File" else "text"
             self.current_save_text = result
             self.current_save_bytes = result.encode("utf-8")
             return
 
-        if self.operation_var.get() == "Encrypt":
+        if request["encrypting"]:
             self.current_display_kind = "binary"
             self.current_save_kind = "bytes"
             self.current_save_text = ""
             self.current_save_bytes = result
             return
 
+        preview_as_text = False
         try:
             decoded = result.decode("utf-8")
         except UnicodeDecodeError:
+            decoded = ""
+        else:
+            preview_as_text = True
+
+        if preview_as_text:
+            self.current_display_kind = "text"
+            self.current_save_kind = "bytes" if request["input_mode"] == "File" else "text"
+            self.current_save_text = decoded
+            self.current_save_bytes = result
+        else:
             self.current_display_kind = "binary"
             self.current_save_kind = "bytes"
             self.current_save_text = ""
-            self.current_save_bytes = result
-        else:
-            self.current_display_kind = "text"
-            self.current_save_kind = "text"
-            self.current_save_text = decoded
             self.current_save_bytes = result
 
     def refresh_output_display(self) -> None:
@@ -852,6 +933,7 @@ class CryptoGUI:
             self.current_display_text = ""
             self.current_visible_display_text = ""
             self.display_was_truncated = False
+            self.output_meta_var.set("Preview: Run an operation to inspect the result.")
             self.set_output_text("")
             return
 
@@ -863,6 +945,7 @@ class CryptoGUI:
         else:
             self.current_display_text = self.format_binary(self.current_save_bytes)
 
+        self.update_output_meta()
         self.current_visible_display_text = self.truncate_display_text(self.current_display_text)
         self.set_output_text(self.current_visible_display_text)
 
@@ -880,7 +963,7 @@ class CryptoGUI:
         )
 
     def format_binary(self, data: bytes) -> str:
-        if self.hex_mode_var.get():
+        if self.binary_format_var.get() == "hex":
             return data.hex()
         return base64.b64encode(data).decode("utf-8")
 
@@ -919,7 +1002,7 @@ class CryptoGUI:
                 with open(path, "wb") as output_file:
                     output_file.write(self.current_save_bytes)
         except Exception as exc:
-            self.set_status(f"Error: {exc}", "red")
+            self.set_status(f"Error: {self.format_error_message(exc)}", "red")
             return
 
         self.set_status(f"File saved successfully to {path}", "green")
@@ -933,6 +1016,7 @@ class CryptoGUI:
         self.current_save_text = ""
         self.current_save_bytes = b""
         self.display_was_truncated = False
+        self.output_meta_var.set("Preview: Run an operation to inspect the result.")
         self.set_output_text("")
         self.stats_var.set("Time: -- | Size: --")
 
@@ -945,8 +1029,7 @@ class CryptoGUI:
         size = len(result.encode("utf-8")) if isinstance(result, str) else len(result)
         self.stats_var.set(f"Time: {elapsed_ms:.2f} ms | Size: {size} bytes")
 
-    def parse_rsa_fields(self) -> dict[str, int]:
-        encrypting = self.operation_var.get() == "Encrypt"
+    def parse_rsa_fields(self, raw_values: dict[str, str], encrypting: bool) -> dict[str, int]:
         required_fields = ("e", "n") if encrypting else ("d", "n")
         values: dict[str, int] = {}
 
@@ -955,7 +1038,7 @@ class CryptoGUI:
             ("d", "RSA exponent d"),
             ("n", "RSA modulus n"),
         ):
-            raw_value = self.key_entries[field_name].get().strip()
+            raw_value = raw_values[field_name].strip()
 
             if not raw_value:
                 if field_name in required_fields:
@@ -982,6 +1065,25 @@ class CryptoGUI:
         decrypting = self.operation_var.get() == "Decrypt"
         message = str(exc)
 
+        if message == "invalid Base64 input":
+            return "Ciphertext must be valid Base64. Switch Binary Text Format to Hex if your input is hex."
+        if message == "invalid hex input":
+            return "Ciphertext must be valid hex. Switch Binary Text Format to Base64 if your input is Base64."
+        if message == "Block too large for modulus":
+            return "RSA encryption failed because the modulus is too small for this input."
+        if isinstance(exc, FileNotFoundError):
+            return "The selected file could not be found. Pick the file again and retry."
+        if isinstance(exc, PermissionError):
+            return "This file could not be accessed because of permissions. Choose a different location or adjust permissions."
+        if isinstance(exc, IsADirectoryError):
+            return "A file was expected here, but a folder was selected."
+        if isinstance(exc, OSError) and not message:
+            return "A file system error occurred while reading or writing data."
+        if decrypting and algorithm == "RSA":
+            if isinstance(exc, OverflowError):
+                return "RSA decryption failed because the ciphertext does not match the selected modulus."
+            if message in {"Ciphertext cannot be empty"}:
+                return "Paste the RSA ciphertext in the selected Base64 or hex format before decrypting."
         if decrypting and algorithm in {"AES", "3DES"}:
             if message == "Invalid padding":
                 return "Decryption failed. The key is likely incorrect, or the ciphertext is corrupted."
@@ -1001,9 +1103,50 @@ class CryptoGUI:
         self.status_var.set(message)
         self.status_label.configure(fg=color_map.get(color, color))
 
+    def build_success_message(self, request: dict[str, object]) -> str:
+        action = "Encryption" if request["encrypting"] else "Decryption"
+
+        if self.current_display_kind == "binary":
+            return (
+                f"Success: {action} complete. Binary output is previewed as {self.get_binary_format_name()}."
+            )
+
+        if request["input_mode"] == "File" and self.current_save_kind == "bytes":
+            return f"Success: {action} complete. Preview shows text, and saving preserves the original file bytes."
+
+        return f"Success: {action} complete."
+
+    def update_output_meta(self) -> None:
+        if self.current_result is None:
+            self.output_meta_var.set("Preview: Run an operation to inspect the result.")
+            return
+
+        if self.current_display_kind == "binary":
+            self.output_meta_var.set(
+                f"Preview: Binary output shown as {self.get_binary_format_name()}. Saving keeps raw bytes."
+            )
+            return
+
+        if self.current_save_kind == "bytes":
+            self.output_meta_var.set("Preview: UTF-8 text shown for convenience. Saving keeps raw bytes.")
+            return
+
+        self.output_meta_var.set("Preview: UTF-8 text.")
+
+    def get_binary_format_name(self) -> str:
+        return "hex" if self.binary_format_var.get() == "hex" else "Base64"
+
 
 def main() -> None:
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # or 2
+    except Exception:
+       pass
     root = tk.Tk()
+    root.state("zoomed")
+    root.tk.call("tk", "scaling", 2.2)
+
     CryptoGUI(root)
     root.mainloop()
 
