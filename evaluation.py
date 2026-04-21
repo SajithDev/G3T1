@@ -51,20 +51,6 @@ def random_text(size):
     return "".join(random.choice(alphabet) for _ in range(size))
 
 
-# ---------- RSA HELPERS ----------
-
-def rsa_chunk_size(n):
-    return (n.bit_length() + 7) // 8 - 1
-
-
-def rsa_safe_bytes(size, chunk_size):
-    data = bytearray(os.urandom(size))
-    for i in range(0, size, chunk_size):
-        if data[i] == 0:
-            data[i] = 1
-    return bytes(data)
-
-
 # ---------- BENCHMARK ----------
 
 def run():
@@ -77,7 +63,6 @@ def run():
 
     aes = AES128(AES_KEY)
     des = importlib.import_module("3des")
-    rsa_chunk = rsa_chunk_size(RSA_N)
 
     # -------- AES --------
     print("\n=== AES ===")
@@ -122,7 +107,7 @@ def run():
     # -------- RSA --------
     print("\n=== RSA ===")
     for size in SIZES:
-        data = rsa_safe_bytes(size, rsa_chunk)
+        data = random_bytes(size)
 
         enc_fn = lambda: rsa_encrypt(data, RSA_E, RSA_N)
         ciphertext = enc_fn()

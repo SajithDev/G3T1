@@ -32,7 +32,9 @@ def _encrypt_block(block: bytes, e: int, n: int) -> bytes:
 def _decrypt_block(block: bytes, d: int, n: int) -> bytes:
     c = _bytes_to_int(block)
     m = pow(c, d, n)
-    return _int_to_bytes(m)
+
+    k = (n.bit_length() + 7) // 8
+    return _int_to_bytes(m, k - 1)  # match chunk size
 
 
 # ===========================
