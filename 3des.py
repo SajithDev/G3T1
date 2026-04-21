@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
+
 # --- Permutation Tables ---
 
 # Initial Permutation Table
-import sys
-
 
 IP = [58, 50, 42, 34, 26, 18, 10, 2,
       60, 52, 44, 36, 28, 20, 12, 4,
@@ -130,11 +128,6 @@ def left_rotate(val, shifts, bits):
     return ((val << shifts) & ((1 << bits) - 1)) | (val >> (bits - shifts))
 
 
-def xor_blocks(a: bytes, b: bytes) -> bytes:
-    """XOR two equal-length byte strings together."""
-    return bytes(x ^ y for x, y in zip(a, b))
-
-
 def pad(data: bytes) -> bytes:
     """Apply PKCS#5 padding to make data a multiple of 8 bytes."""
     pad_len = 8 - (len(data) % 8)
@@ -142,14 +135,13 @@ def pad(data: bytes) -> bytes:
 
 
 def unpad(data: bytes) -> bytes:
-    """Remove and validate PKCS#5 padding."""
-    if len(data) == 0:
-        raise ValueError("Cannot unpad empty data")
+    if not data:
+        raise ValueError("Invalid padding")
     pad_len = data[-1]
     if pad_len < 1 or pad_len > 8:
-        raise ValueError(f"Invalid padding length: {pad_len}")
+        raise ValueError("Invalid padding")
     if data[-pad_len:] != bytes([pad_len] * pad_len):
-        raise ValueError("Invalid padding bytes")
+        raise ValueError("Invalid padding")
     return data[:-pad_len]
 
 
@@ -158,11 +150,10 @@ def unpad(data: bytes) -> bytes:
 class DES:
     def __init__(self, key: bytes):
         if len(key) != 8:
-            raise ValueError("DES key must be exactly 8 bytes")
+            raise ValueError("DES key must be 8 bytes")
         self.round_keys = self._generate_keys(int.from_bytes(key, 'big'))
 
-    def _generate_keys(self, key: int) -> list:
-        """Generate the 16 round subkeys from the master key."""
+    def _generate_keys(self, key):
         key = permute(key, PC1, 64)
         C = (key >> 28) & ((1 << 28) - 1)
         D = key & ((1 << 28) - 1)
@@ -175,7 +166,7 @@ class DES:
             keys.append(permute(combined, PC2, 56))
         return keys
 
-    def _f(self, R: int, K: int) -> int:
+    def _f(self, R, K):
         """The Feistel (f) function: expansion, key mixing, S-box substitution, permutation."""
         R_expanded = permute(R, E, 32)
         x = R_expanded ^ K
@@ -193,7 +184,7 @@ class DES:
 
         return permute(output, P, 32)
 
-    def process_block(self, block: int, encrypt: bool = True) -> int:
+    def process_block(self, block, encrypt=True):
         """Encrypt or decrypt a single 64-bit block."""
         block = permute(block, IP, 64)
         L = (block >> 32) & 0xFFFFFFFF
@@ -213,50 +204,30 @@ class DES:
 # --- Triple DES Class ---
 
 class TripleDES:
-    """
-    Triple DES (3DES) using EDE (Encrypt-Decrypt-Encrypt) with three keys.
-    Mode: ECB only
-    """
+    def __init__(self, key1: bytes, key2: bytes, key3: bytes):
+        if not (len(key1) == len(key2) == len(key3) == 8):
+            raise ValueError("Each key must be 8 bytes")
 
-    def __init__(self, key1, key2, key3):
-        self.key1 = self._normalize_key(key1)
-        self.key2 = self._normalize_key(key2)
-        self.key3 = self._normalize_key(key3)
+        self.des1 = DES(key1)
+        self.des2 = DES(key2)
+        self.des3 = DES(key3)
 
-        self.des1 = DES(self.key1)
-        self.des2 = DES(self.key2)
-        self.des3 = DES(self.key3)
-        
-    def _normalize_key(self, key):
-        if isinstance(key, str):
-            key = key.encode('utf-8')
-
-        if len(key) != 8:
-            raise ValueError(f"Key must be exactly 8 bytes after encoding: {key}")
-
-        return key
-
-    def _encrypt_block(self, block: int) -> int:
-        """EDE: Encrypt → Decrypt → Encrypt"""
+    def _encrypt_block(self, block):
         block = self.des1.process_block(block, True)
         block = self.des2.process_block(block, False)
         block = self.des3.process_block(block, True)
         return block
 
-    def _decrypt_block(self, block: int) -> int:
-        """Reverse EDE"""
+    def _decrypt_block(self, block):
         block = self.des3.process_block(block, False)
         block = self.des2.process_block(block, True)
         block = self.des1.process_block(block, False)
         return block
 
-    def encrypt(self, data):
-        """Encrypt string or bytes."""
-        is_string = isinstance(data, str)
-
-        if is_string:
-            data = data.encode('utf-8')
-
+    def encrypt(self, data: bytes) -> bytes:
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("Data must be bytes")
+        
         data = pad(data)
         result = b''
 
@@ -265,14 +236,11 @@ class TripleDES:
             encrypted = self._encrypt_block(block)
             result += encrypted.to_bytes(8, 'big')
 
-        return result.hex() if is_string else result
+        return result
 
-    def decrypt(self, data):
-        """Decrypt hex string or bytes."""
-        is_string = isinstance(data, str)
-
-        if is_string:
-            data = bytes.fromhex(data)
+    def decrypt(self, data: bytes) -> bytes:
+        if len(data) % 8 != 0:
+            raise ValueError("Ciphertext must be multiple of 8 bytes")
 
         result = b''
 
@@ -281,94 +249,15 @@ class TripleDES:
             decrypted = self._decrypt_block(block)
             result += decrypted.to_bytes(8, 'big')
 
-        result = unpad(result)
-
-        return result.decode('utf-8') if is_string else result
+        return unpad(result)
 
 
-# --- Main Function ---
+# --- API for GUI ---
 
-def parse_input(user_input: str) -> bytes:
-    """
-    STRICT RULE:
-    - If user passes 0x prefix → hex
-    - Otherwise → UTF-8 string
-    """
+def encrypt_3des(data: bytes, key1: bytes, key2: bytes, key3: bytes) -> bytes:
+    return TripleDES(key1, key2, key3).encrypt(data)
 
-    if user_input.startswith("0x"):
-        return bytes.fromhex(user_input[2:])
 
-    return user_input.encode("utf-8")
+def decrypt_3des(data: bytes, key1: bytes, key2: bytes, key3: bytes) -> bytes:
+    return TripleDES(key1, key2, key3).decrypt(data)
 
-def run_3des(operation, data_input, key1_input, key2_input, key3_input):
-    """
-    Core function for GUI or CLI usage.
-
-    Args:
-        operation: '-e' or '-d'
-        data_input: string (plaintext or hex ciphertext)
-        key1_input, key2_input, key3_input: string or bytes
-
-    Returns:
-        result (str): hex string for encryption, plaintext string for decryption
-    """
-
-    # --- Validate operation ---
-    if operation not in ('-e', '-d'):
-        raise ValueError("Operation must be '-e' (encrypt) or '-d' (decrypt)")
-
-    # --- Parse keys ---
-    keys = []
-    for k in (key1_input, key2_input, key3_input):
-        key_bytes = parse_input(k)
-
-        if len(key_bytes) != 8:
-            raise ValueError(f"Key '{k}' must be exactly 8 bytes")
-
-        keys.append(key_bytes)
-
-    key1, key2, key3 = keys
-
-    # --- Initialize 3DES ---
-    tdes = TripleDES(key1, key2, key3)
-
-    # --- Process ---
-    if operation == '-e':
-        data = parse_input(data_input)
-        result = tdes.encrypt(data)
-        return result.hex()
-
-    else:  # decrypt
-        try:
-            data = bytes.fromhex(data_input)
-        except ValueError:
-            raise ValueError("Decryption input must be hex")
-
-        result = tdes.decrypt(data)
-
-        try:
-            return result.decode('utf-8')
-        except UnicodeDecodeError:
-            return result.hex()
-
-def main():
-    if len(sys.argv) != 6:
-        print("Usage:")
-        print("  Encrypt: ./trip_DES.py -e <data> <key1> <key2> <key3>")
-        print("  Decrypt: ./trip_DES.py -d <hex_data> <key1> <key2> <key3>")
-        sys.exit(1)
-
-    operation = sys.argv[1]
-    data_input = sys.argv[2]
-    key1, key2, key3 = sys.argv[3:6]
-
-    try:
-        result = run_3des(operation, data_input, key1, key2, key3)
-        print(result)
-
-    except Exception as e:
-        print("Error:", e)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()

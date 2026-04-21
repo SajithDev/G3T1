@@ -205,7 +205,7 @@ class AES128:
             raise TypeError("Plaintext must be bytes")
 
         if len(plaintext) == 0:
-            raise ValueError("Plaintext cannot be empty")
+          return b""
 
         padded = self._pad(plaintext)
         ciphertext = b''.join(
@@ -218,7 +218,10 @@ class AES128:
         if not isinstance(ciphertext, (bytes, bytearray)):
             raise TypeError("Ciphertext must be bytes")
 
-        if len(ciphertext) == 0 or len(ciphertext) % BLOCK_SIZE != 0:
+        if len(ciphertext) == 0:
+            return b""
+
+        if len(ciphertext) % BLOCK_SIZE != 0:
             raise ValueError("Invalid ciphertext length")
 
         plaintext = b''.join(
