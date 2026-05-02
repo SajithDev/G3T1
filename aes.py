@@ -1,6 +1,4 @@
-# AES-128 ECB Algorithm Implementation
-
-BLOCK_SIZE = 16 # AES operates on 16-byte (128-bit) blocks
+BLOCK_SIZE = 16
 Nr = 10 # Number of rounds for AES-128
 
 class AES128:
@@ -199,7 +197,7 @@ class AES128:
 
         return data[:-pad_len]
 
-    # ----------- PUBLIC API -----------
+    # ----------- API wrapper for GUI -----------
     def encrypt(self, plaintext: bytes) -> bytes:
         if not isinstance(plaintext, (bytes, bytearray)):
             raise TypeError("Plaintext must be bytes")

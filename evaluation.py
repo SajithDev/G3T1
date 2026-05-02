@@ -9,7 +9,7 @@ from aes import AES128
 from rsa import rsa_encrypt, rsa_decrypt
 from vigenere import vigenere_encrypt, vigenere_decrypt
 
-# ---------------- CONFIG ----------------
+# Input setup
 SIZES = [1024, 10240, 102400]   # 1 KB, 10 KB, 100 KB
 RUNS = 5
 
@@ -64,7 +64,6 @@ def run():
     aes = AES128(AES_KEY)
     des = importlib.import_module("3des")
 
-    # -------- AES --------
     print("\n=== AES ===")
     for size in SIZES:
         data = random_bytes(size)
@@ -84,7 +83,6 @@ def run():
         print(f"{size} bytes | enc={t_enc*1000:.2f} ms ({thr_enc:.2f} KB/s) "
               f"| dec={t_dec*1000:.2f} ms ({thr_dec:.2f} KB/s)")
 
-    # -------- 3DES --------
     print("\n=== 3DES ===")
     for size in SIZES:
         data = random_bytes(size)
@@ -104,7 +102,6 @@ def run():
         print(f"{size} bytes | enc={t_enc*1000:.2f} ms ({thr_enc:.2f} KB/s) "
               f"| dec={t_dec*1000:.2f} ms ({thr_dec:.2f} KB/s)")
 
-    # -------- RSA --------
     print("\n=== RSA ===")
     for size in SIZES:
         data = random_bytes(size)
@@ -123,8 +120,7 @@ def run():
 
         print(f"{size} bytes | enc={t_enc*1000:.2f} ms ({thr_enc:.2f} KB/s) "
               f"| dec={t_dec*1000:.2f} ms ({thr_dec:.2f} KB/s)")
-
-    # -------- Vigenere --------
+        
     print("\n=== Vigenere ===")
     for size in SIZES:
         text = random_text(size)

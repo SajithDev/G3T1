@@ -1,33 +1,41 @@
-from __future__ import annotations
-import ctypes
+# Cryptographic GUI Application - Supports AES, 3DES, RSA, and Vigenere Cipher
+# Main entry point and UI implementation using Tkinter framework
 
-import base64
-import importlib
-from pathlib import Path
-from time import perf_counter
+from __future__ import annotations
+import ctypes  # For Windows DPI scaling
+
+import base64  # For Base64 encoding/decoding of binary data
+import importlib  # For importing modules with numeric names (3des)
+from pathlib import Path  # For file path operations
+from time import perf_counter  # For timing encryption/decryption operations
 import tkinter as tk    
 from tkinter import font as tkfont
-from tkinter import filedialog, ttk
-from tkinter.scrolledtext import ScrolledText
+from tkinter import filedialog, ttk  # For file dialogs and themed widgets
+from tkinter.scrolledtext import ScrolledText  # For scrollable text areas
 
+# Import cryptographic algorithm implementations
 from aes import AES128
 from rsa import rsa_decrypt, rsa_encrypt
 from vigenere import vigenere_decrypt, vigenere_encrypt
 
 
+# Import 3DES functions (module name starts with digit, so use importlib)
 triple_des_module = importlib.import_module("3des")
 decrypt_3des = triple_des_module.decrypt_3des
 encrypt_3des = triple_des_module.encrypt_3des
 
-
+# Display constants for output truncation (prevent UI lag with huge outputs)
 MAX_DISPLAY_CHARS = 12000
 DISPLAY_HEAD_CHARS = 8000
 DISPLAY_TAIL_CHARS = 3000
 
 
+# Main GUI class for the cryptographic application
 class CryptoGUI:
     def __init__(self, root: tk.Tk) -> None:
+        """Initialize the cryptographic GUI with all UI components and state variables."""
         self.root = root
+        # Define color scheme for the dark-themed interface
         self.colors = {
             "bg": "#08111f",
             "panel": "#0f1b2d",
@@ -81,6 +89,7 @@ class CryptoGUI:
         self.set_status("Idle.", "gray")
 
     def _configure_styles(self) -> None:
+        """Configure all ttk widget styles for consistent dark theme appearance."""
         self.style.theme_use("clam")
 
         default_font = tkfont.nametofont("TkDefaultFont")
@@ -302,6 +311,7 @@ class CryptoGUI:
         )
 
     def _build_ui(self) -> None:
+        """Build the complete UI layout with scrollable content area."""
         shell = ttk.Frame(self.root, style="App.TFrame")
         shell.grid(row=0, column=0, sticky="nsew")
         shell.columnconfigure(0, weight=1)
@@ -628,6 +638,8 @@ class CryptoGUI:
             self.scroll_canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def on_algorithm_change(self, _event: object | None = None) -> None:
+        """Handle algorithm selection change and update key input fields accordingly."""
+        # Clear previous key input fields
         for child in self.key_container.winfo_children():
             child.destroy()
         self.key_entries.clear()
@@ -638,6 +650,7 @@ class CryptoGUI:
             self._render_single_key("AES Key (16 bytes)", "key")
             self.enable_file_input()
         elif algorithm == "3DES":
+            # 3DES requires three separate 8-byte keys
             self.enable_file_input()
             labels = ("Key 1 (8 bytes)", "Key 2 (8 bytes)", "Key 3 (8 bytes)")
             key_frame = ttk.Frame(self.key_container, style="Card.TFrame")
@@ -652,6 +665,7 @@ class CryptoGUI:
                 self.key_entries[f"key{index + 1}"] = entry
         elif algorithm == "RSA":
             self.enable_file_input()
+            # RSA requires three parameters: e (public exponent), d (private exponent), n (modulus)
             key_frame = ttk.Frame(self.key_container, style="Card.TFrame")
             key_frame.grid(row=0, column=0, sticky="ew")
             for index, (field_name, label) in enumerate(
@@ -674,6 +688,7 @@ class CryptoGUI:
                 style="Muted.TLabel",
             ).grid(row=1, column=0, sticky="w", pady=(8, 0))
         else:
+            # Vigenere cipher only works with text input
             self._render_single_key("Vigenere Key (Alphabetic)", "key")
             self.force_text_input_mode()
 
@@ -739,6 +754,8 @@ class CryptoGUI:
         self.set_status(f"Selected file: {path}", "gray")
 
     def on_run_clicked(self) -> None:
+        """Main execution flow: validate inputs, encrypt/decrypt, display results."""
+        # Step 1: Build and validate request from UI inputs
         try:
             request = self.build_request_from_ui()
             self.validate_request(request)
@@ -746,13 +763,15 @@ class CryptoGUI:
             self.set_status(f"Error: {self.format_error_message(exc)}", "red")
             return
 
+        # Step 2: Execute cryptographic operation with timing
         try:
             self.set_status("Processing...", "blue")
             self.root.update_idletasks()
             started = perf_counter()
-            data = self.get_input_data(request)
-            result = self.execute_backend(data, request)
+            data = self.get_input_data(request)  # Load input (text or file)
+            result = self.execute_backend(data, request)  # Perform encryption/decryption
             elapsed_ms = (perf_counter() - started) * 1000
+            # Step 3: Store results and update UI
             self.store_result_state(result, request)
             self.refresh_output_display()
             self.update_stats(elapsed_ms, result)
@@ -787,9 +806,11 @@ class CryptoGUI:
         return request
 
     def validate_request(self, request: dict[str, object]) -> None:
+        """Validate user inputs before processing (key lengths, file existence, etc)."""
         input_mode = str(request["input_mode"])
         algorithm = str(request["algorithm"])
 
+        # Validate input is provided
         if input_mode == "Text":
             raw_text = str(request["text_input"])
             if not raw_text.strip():
@@ -803,11 +824,13 @@ class CryptoGUI:
 
         if algorithm == "AES":
             key = str(request["key"])
+            # AES-128 requires exactly 16 bytes for the key
             if len(key.encode("utf-8")) != 16:
                 raise ValueError("AES key must be exactly 16 bytes")
         elif algorithm == "3DES":
             keys = request["keys"]
             assert isinstance(keys, list)
+            # Validate all three 8-byte keys
             for index, key in enumerate(keys, start=1):
                 if len(str(key).encode("utf-8")) != 8:
                     raise ValueError(f"3DES Key {index} must be exactly 8 bytes")
@@ -823,10 +846,12 @@ class CryptoGUI:
             request["rsa_values"] = self.parse_rsa_fields(raw_values, bool(request["encrypting"]))
 
     def get_input_data(self, request: dict[str, object]) -> bytes | str:
+        """Load input data from text field or file based on user selection."""
         algorithm = str(request["algorithm"])
         operation = str(request["operation"])
         input_mode = str(request["input_mode"])
 
+        # Load raw bytes from file if in file mode
         if input_mode == "File":
             with open(str(request["file_path"]), "rb") as source_file:
                 return source_file.read()
@@ -841,10 +866,13 @@ class CryptoGUI:
         return self.parse_binary_text(raw_text, str(request["binary_format"]))
 
     def parse_binary_text(self, value: str, binary_format: str) -> bytes:
+        """Convert Base64 or hex string input to bytes for decryption."""
+        # Remove whitespace for easier parsing
         cleaned = "".join(value.split())
         if not cleaned:
             raise ValueError("Ciphertext cannot be empty")
 
+        # Decode based on selected format
         if binary_format == "hex":
             return self._parse_hex(cleaned)
         return self._parse_base64(cleaned)
@@ -856,6 +884,7 @@ class CryptoGUI:
             raise ValueError("invalid Base64 input") from exc
 
     def _parse_hex(self, value: str) -> bytes:
+        # Support 0x prefix for hexadecimal notation
         if value.lower().startswith("0x"):
             value = value[2:]
         try:
@@ -864,10 +893,12 @@ class CryptoGUI:
             raise ValueError("invalid hex input") from exc
 
     def execute_backend(self, data: bytes | str, request: dict[str, object]) -> bytes | str:
+        """Execute the actual encryption/decryption based on selected algorithm."""
         algorithm = str(request["algorithm"])
         encrypting = bool(request["encrypting"])
 
         if algorithm == "AES":
+            # Use AES-128 cipher with UTF-8 encoded key
             key = str(request["key"]).encode("utf-8")
             cipher = AES128(key)
             return cipher.encrypt(data) if encrypting else cipher.decrypt(data)
@@ -875,6 +906,7 @@ class CryptoGUI:
         if algorithm == "3DES":
             keys = request["keys"]
             assert isinstance(keys, list)
+            # Encode all three keys to bytes
             key1, key2, key3 = (str(key).encode("utf-8") for key in keys)
             if encrypting:
                 return encrypt_3des(data, key1, key2, key3)
@@ -883,6 +915,7 @@ class CryptoGUI:
         if algorithm == "RSA":
             rsa_values = request["rsa_values"]
             assert isinstance(rsa_values, dict)
+            # RSA encrypt/decrypt delegates to specialized functions
             if encrypting:
                 return rsa_encrypt(data, rsa_values["e"], rsa_values["n"])
             return rsa_decrypt(data, rsa_values["d"], rsa_values["n"])
@@ -893,8 +926,10 @@ class CryptoGUI:
         return vigenere_decrypt(data, key)
 
     def store_result_state(self, result: bytes | str, request: dict[str, object]) -> None:
+        """Store the result and determine how to display/save it based on data type."""
         self.current_result = result
 
+        # Handle string results (mainly from Vigenere cipher)
         if isinstance(result, str):
             self.current_display_kind = "text"
             self.current_save_kind = "bytes" if request["input_mode"] == "File" else "text"
@@ -909,6 +944,7 @@ class CryptoGUI:
             self.current_save_bytes = result
             return
 
+        # For decryption, try to display as text if valid UTF-8
         preview_as_text = False
         try:
             decoded = result.decode("utf-8")
@@ -929,6 +965,7 @@ class CryptoGUI:
             self.current_save_bytes = result
 
     def refresh_output_display(self) -> None:
+        """Update the output display area with current result, applying formatting as needed."""
         if self.current_result is None:
             self.current_display_text = ""
             self.current_visible_display_text = ""
@@ -937,6 +974,7 @@ class CryptoGUI:
             self.set_output_text("")
             return
 
+        # Format text or binary display
         if self.current_display_kind == "text":
             if isinstance(self.current_result, str):
                 self.current_display_text = self.current_result
@@ -950,10 +988,12 @@ class CryptoGUI:
         self.set_output_text(self.current_visible_display_text)
 
     def truncate_display_text(self, value: str) -> str:
+        """Limit displayed output to prevent UI lag with very large results."""
         if len(value) <= MAX_DISPLAY_CHARS:
             self.display_was_truncated = False
             return value
 
+        # Mark as truncated and show head + tail with ellipsis
         self.display_was_truncated = True
         hidden_chars = len(value) - (DISPLAY_HEAD_CHARS + DISPLAY_TAIL_CHARS)
         return (
@@ -963,6 +1003,8 @@ class CryptoGUI:
         )
 
     def format_binary(self, data: bytes) -> str:
+        """Format binary data as hex or Base64 string for display."""
+        # Use hex or Base64 based on user preference
         if self.binary_format_var.get() == "hex":
             return data.hex()
         return base64.b64encode(data).decode("utf-8")
@@ -974,10 +1016,12 @@ class CryptoGUI:
         self.output_text.configure(state=tk.DISABLED)
 
     def copy_output(self) -> None:
+        """Copy the full output to clipboard (not truncated version)."""
         if not self.current_display_text:
             self.set_status("Nothing to copy.", "red")
             return
 
+        # Copy to system clipboard
         self.root.clipboard_clear()
         self.root.clipboard_append(self.current_display_text)
         if self.display_was_truncated:
@@ -986,10 +1030,12 @@ class CryptoGUI:
             self.set_status("Output copied to clipboard.", "green")
 
     def save_output_to_file(self) -> None:
+        """Save the cryptographic result to a file on disk."""
         if self.current_result is None:
             self.set_status("Nothing to save.", "red")
             return
 
+        # Open save dialog
         path = filedialog.asksaveasfilename()
         if not path:
             return
@@ -1008,8 +1054,11 @@ class CryptoGUI:
         self.set_status(f"File saved successfully to {path}", "green")
 
     def clear_all(self) -> None:
+        """Reset all input fields, output, and state variables."""
+        # Clear text input and file path
         self.text_input.delete("1.0", tk.END)
         self.file_path_var.set("")
+        # Reset all result storage
         self.current_result = None
         self.current_display_text = ""
         self.current_visible_display_text = ""
@@ -1026,10 +1075,14 @@ class CryptoGUI:
         self.set_status("Cleared input, output, and keys.", "gray")
 
     def update_stats(self, elapsed_ms: float, result: bytes | str) -> None:
+        """Display execution time and result size in status bar."""
+        # Calculate result size in bytes
         size = len(result.encode("utf-8")) if isinstance(result, str) else len(result)
         self.stats_var.set(f"Time: {elapsed_ms:.2f} ms | Size: {size} bytes")
 
     def parse_rsa_fields(self, raw_values: dict[str, str], encrypting: bool) -> dict[str, int]:
+        """Parse and validate RSA parameters (e, d, n) from user input."""
+        # Determine which fields are required based on operation type
         required_fields = ("e", "n") if encrypting else ("d", "n")
         values: dict[str, int] = {}
 
@@ -1061,6 +1114,7 @@ class CryptoGUI:
         return values
 
     def format_error_message(self, exc: Exception) -> str:
+        """Convert technical errors into user-friendly messages based on context."""
         algorithm = self.algorithm_var.get()
         decrypting = self.operation_var.get() == "Decrypt"
         message = str(exc)
@@ -1093,6 +1147,8 @@ class CryptoGUI:
         return message
 
     def set_status(self, message: str, color: str) -> None:
+        """Update status bar with message and color-coded status indicator."""
+        # Map color names to hex values for UI display
         color_map = {
             "gray": "#5f6368",
             "green": "#1e8e3e",
@@ -1104,6 +1160,7 @@ class CryptoGUI:
         self.status_label.configure(fg=color_map.get(color, color))
 
     def build_success_message(self, request: dict[str, object]) -> str:
+        """Generate contextual success message based on operation type and output format."""
         action = "Encryption" if request["encrypting"] else "Decryption"
 
         if self.current_display_kind == "binary":
@@ -1117,6 +1174,7 @@ class CryptoGUI:
         return f"Success: {action} complete."
 
     def update_output_meta(self) -> None:
+        """Update metadata text describing the current output state."""
         if self.current_result is None:
             self.output_meta_var.set("Preview: Run an operation to inspect the result.")
             return
@@ -1134,18 +1192,22 @@ class CryptoGUI:
         self.output_meta_var.set("Preview: UTF-8 text.")
 
     def get_binary_format_name(self) -> str:
+        """Return the currently selected binary format name (Base64 or hex)."""
         return "hex" if self.binary_format_var.get() == "hex" else "Base64"
 
 
 def main() -> None:
-
+    """Application entry point - initialize window and start GUI."""
+    # Enable DPI awareness on Windows for proper scaling
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # or 2
+        ctypes.windll.shcore.SetProcessDpiAwareness(1) 
     except Exception:
        pass
+    
+    # Setup main window
     root = tk.Tk()
-    root.state("zoomed")
-    root.tk.call("tk", "scaling", 2.2)
+    root.state("zoomed")  # Start maximized
+    root.tk.call("tk", "scaling", 1.5)  # Scale UI elements to 1.5x for better readability
 
     CryptoGUI(root)
     root.mainloop()

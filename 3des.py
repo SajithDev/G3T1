@@ -1,5 +1,5 @@
 
-# --- Permutation Tables ---
+# TABLES
 
 # Initial Permutation Table
 
@@ -252,7 +252,7 @@ class TripleDES:
         return unpad(result)
 
 
-# --- API for GUI ---
+# --- API wrapper for GUI ---
 
 def encrypt_3des(data: bytes, key1: bytes, key2: bytes, key3: bytes) -> bytes:
     return TripleDES(key1, key2, key3).encrypt(data)

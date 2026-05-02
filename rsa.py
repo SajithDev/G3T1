@@ -1,6 +1,5 @@
-# ===========================
-# Internal helpers
-# ===========================
+
+# Helper functions for conversions
 
 def _bytes_to_int(data: bytes) -> int:
     return int.from_bytes(data, "big")
@@ -14,9 +13,7 @@ def _int_to_bytes(value: int, length=None) -> bytes:
     return value.to_bytes(length, "big")
 
 
-# ===========================
-# Core single-block RSA
-# ===========================
+# Block by Block RSA encryption/decryption (for chunking)
 
 def _encrypt_block(block: bytes, e: int, n: int) -> bytes:
     m = _bytes_to_int(block)
@@ -37,10 +34,7 @@ def _decrypt_block(block: bytes, d: int, n: int) -> bytes:
     return _int_to_bytes(m, k - 1)  # match chunk size
 
 
-# ===========================
-# Public API (chunked)
-# ===========================
-
+# Public API for chunked RSA encryption/decryption
 def rsa_encrypt(data: bytes, e: int, n: int) -> bytes:
     """
     Encrypt arbitrary bytes using chunking.
